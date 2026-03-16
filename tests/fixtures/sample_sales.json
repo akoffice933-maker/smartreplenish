@@ -1,0 +1,22 @@
+[
+  {
+    "sale_id": "SALE-001",
+    "shop_id": "STORE-001",
+    "sku_id": "SKU-00001",
+    "quantity": 10,
+    "price": 89.99,
+    "sale_timestamp": "2026-03-15T10:30:00",
+    "promo_flag": 0,
+    "category": "Молочное"
+  },
+  {
+    "sale_id": "SALE-002",
+    "shop_id": "STORE-001",
+    "sku_id": "SKU-00002",
+    "quantity": 5,
+    "price": 120.50,
+    "sale_timestamp": "2026-03-15T11:00:00",
+    "promo_flag": 1,
+    "category": "Хлеб"
+  }
+]

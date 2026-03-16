@@ -1,0 +1,40 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['api-gateway:8000']
+    metrics_path: '/metrics'
+
+  - job_name: 'forecasting'
+    static_configs:
+      - targets: ['forecasting:8000']
+    metrics_path: '/metrics'
+
+  - job_name: 'optimization'
+    static_configs:
+      - targets: ['optimization:8000']
+    metrics_path: '/metrics'
+
+  - job_name: 'alerting'
+    static_configs:
+      - targets: ['alerting:8000']
+    metrics_path: '/metrics'
+
+  - job_name: 'feature-store'
+    static_configs:
+      - targets: ['feature-store:8000']
+    metrics_path: '/metrics'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files: []

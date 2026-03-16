@@ -1,0 +1,326 @@
+version: '3.8'
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+networks:
+  smartreplenish_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  postgres_data:
+  clickhouse_data:
+  prometheus_data:
+  grafana_data:
+  kafka_data:
+  zookeeper_data:
+
+services:
+  # Базы данных
+  postgres:
+    image: postgres:15-alpine
+    container_name: smartreplenish-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: smartreplenish
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - smartreplenish_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d smartreplenish"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8-alpine
+    container_name: smartreplenish-clickhouse
+    restart: unless-stopped
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./infra/clickhouse/init:/docker-entrypoint-initdb.d
+      - ./infra/clickhouse/config/config.xml:/etc/clickhouse-server/config.d/custom.xml
+    ports:
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:9000:9000"
+    networks:
+      - smartreplenish_net
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  # Очереди сообщений
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: smartreplenish-zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_data:/var/lib/zookeeper/log
+    networks:
+      - smartreplenish_net
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: smartreplenish-kafka
+    restart: unless-stopped
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_LOG_RETENTION_BYTES: 10737418240
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    ports:
+      - "127.0.0.1:9092:9092"
+    networks:
+      - smartreplenish_net
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  # Микросервисы
+  data-ingestion:
+    build:
+      context: ./services/data-ingestion
+      dockerfile: Dockerfile
+    container_name: smartreplenish-data-ingestion
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: 9000
+      CLICKHOUSE_DATABASE: smartreplenish
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./services/data-ingestion/config:/app/config:ro
+    networks:
+      - smartreplenish_net
+    logging: *default-logging
+
+  feature-store:
+    build:
+      context: ./services/feature-store
+      dockerfile: Dockerfile
+    container_name: smartreplenish-feature-store
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: 9000
+      CLICKHOUSE_DATABASE: smartreplenish
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "127.0.0.1:8001:8000"
+    networks:
+      - smartreplenish_net
+    logging: *default-logging
+
+  forecasting:
+    build:
+      context: ./services/forecasting
+      dockerfile: Dockerfile
+    container_name: smartreplenish-forecasting
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      feature-store:
+        condition: service_started
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: 9000
+      CLICKHOUSE_DATABASE: smartreplenish
+      FEATURE_STORE_URL: http://feature-store:8000
+      MODEL_PATH: /app/models
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      FORECAST_HORIZON: ${FORECAST_HORIZON:-7}
+      WAPE_THRESHOLD: ${WAPE_THRESHOLD:-22.0}
+    volumes:
+      - ./services/forecasting/models:/app/models
+    ports:
+      - "127.0.0.1:8002:8000"
+    networks:
+      - smartreplenish_net
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
+  optimization:
+    build:
+      context: ./services/optimization
+      dockerfile: Dockerfile
+    container_name: smartreplenish-optimization
+    restart: unless-stopped
+    depends_on:
+      forecasting:
+        condition: service_started
+    environment:
+      FORECASTING_URL: http://forecasting:8000
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "127.0.0.1:8003:8000"
+    networks:
+      - smartreplenish_net
+    logging: *default-logging
+
+  alerting:
+    build:
+      context: ./services/alerting
+      dockerfile: Dockerfile
+    container_name: smartreplenish-alerting
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      forecasting:
+        condition: service_started
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: 9000
+      CLICKHOUSE_DATABASE: smartreplenish
+      FORECASTING_URL: http://forecasting:8000
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "127.0.0.1:8004:8000"
+    networks:
+      - smartreplenish_net
+    logging: *default-logging
+
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: smartreplenish-api-gateway
+    restart: unless-stopped
+    depends_on:
+      forecasting:
+        condition: service_started
+      optimization:
+        condition: service_started
+      alerting:
+        condition: service_started
+    environment:
+      FORECASTING_URL: http://forecasting:8000
+      OPTIMIZATION_URL: http://optimization:8000
+      ALERTING_URL: http://alerting:8000
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+      JWT_ALGORITHM: HS256
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      RATE_LIMIT_REQUESTS: ${RATE_LIMIT_REQUESTS:-100}
+      RATE_LIMIT_PERIOD: ${RATE_LIMIT_PERIOD:-60}
+    ports:
+      - "8080:8000"
+    networks:
+      - smartreplenish_net
+    logging: *default-logging
+
+  frontend:
+    build:
+      context: ./services/frontend
+      dockerfile: Dockerfile
+    container_name: smartreplenish-frontend
+    restart: unless-stopped
+    depends_on:
+      - api-gateway
+    environment:
+      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:8080}
+      REACT_APP_WS_URL: ${REACT_APP_WS_URL:-ws://localhost:8080}
+    ports:
+      - "3000:3000"
+    networks:
+      - smartreplenish_net
+    logging: *default-logging
+
+  # Мониторинг
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: smartreplenish-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./infra/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - smartreplenish_net
+    logging: *default-logging
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: smartreplenish-grafana
+    restart: unless-stopped
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./infra/monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: false
+    ports:
+      - "3030:3000"
+    networks:
+      - smartreplenish_net
+    logging: *default-logging

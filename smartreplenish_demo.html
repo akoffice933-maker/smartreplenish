@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartReplenish — Live Demo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #060810;
+  --s1:       #0d1117;
+  --s2:       #141b26;
+  --s3:       #1c2535;
+  --border:   #1e2d45;
+  --cyan:     #00e5ff;
+  --violet:   #8b5cf6;
+  --green:    #00ff88;
+  --amber:    #ffb800;
+  --red:      #ff4560;
+  --text:     #e8edf5;
+  --muted:    #4a5568;
+  --dim:      #8892a4;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+
+body {
+  background:var(--bg);
+  color:var(--text);
+  font-family:'IBM Plex Mono',monospace;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* Scanline overlay */
+body::after {
+  content:'';
+  position:fixed;
+  inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,.012) 2px,rgba(0,229,255,.012) 4px);
+  pointer-events:none;
+  z-index:9999;
+}
+
+/* Animated grid bg */
+.grid-bg {
+  position:fixed;
+  inset:0;
+  background-image:
+    linear-gradient(rgba(0,229,255,.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,229,255,.04) 1px,transparent 1px);
+  background-size:48px 48px;
+  pointer-events:none;
+  z-index:0;
+}
+
+.wrap {
+  position:relative;
+  z-index:1;
+  max-width:1440px;
+  margin:0 auto;
+  padding:20px 24px;
+}
+
+/* ── Header ── */
+header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:16px 0 24px;
+  border-bottom:1px solid var(--border);
+  margin-bottom:24px;
+}
+.logo {
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
+.logo-mark {
+  width:44px;height:44px;
+  background:conic-gradient(var(--cyan),var(--violet),var(--cyan));
+  border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;
+  animation:spin-slow 8s linear infinite;
+}
+@keyframes spin-slow{to{filter:hue-rotate(360deg)}}
+.logo-name {
+  font-family:'Syne',sans-serif;
+  font-size:22px;font-weight:800;
+  letter-spacing:-0.5px;
+}
+.logo-name em {color:var(--cyan);font-style:normal}
+.logo-sub {font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+
+.status-row {display:flex;gap:8px;align-items:center}
+.pill {
+  font-size:10px;letter-spacing:1px;text-transform:uppercase;
+  padding:5px 12px;border-radius:20px;
+  border:1px solid var(--border);
+  color:var(--muted);background:var(--s1);
+}
+.pill.live {border-color:var(--green);color:var(--green);background:rgba(0,255,136,.07)}
+.pill.live::before{content:'● '}
+
+/* ── Nav tabs ── */
+.tabs {
+  display:flex;gap:4px;
+  margin-bottom:24px;
+  border-bottom:1px solid var(--border);
+  padding-bottom:0;
+}
+.tab {
+  padding:10px 20px;
+  font-size:12px;letter-spacing:1px;text-transform:uppercase;
+  cursor:pointer;border:none;background:transparent;
+  color:var(--muted);border-bottom:2px solid transparent;
+  transition:all .2s;font-family:inherit;
+}
+.tab:hover{color:var(--dim)}
+.tab.active{color:var(--cyan);border-bottom-color:var(--cyan)}
+
+/* ── Pages ── */
+.page{display:none}
+.page.active{display:block}
+
+/* ── KPI Grid ── */
+.kpi-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  gap:12px;
+  margin-bottom:20px;
+}
+.kpi {
+  background:var(--s1);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:18px 20px;
+  position:relative;
+  overflow:hidden;
+  transition:border-color .3s;
+}
+.kpi:hover{border-color:var(--cyan)}
+.kpi::before {
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--kpi-color,var(--cyan)),transparent);
+}
+.kpi-label {
+  font-size:9px;letter-spacing:2px;text-transform:uppercase;
+  color:var(--muted);margin-bottom:10px;
+}
+.kpi-val {
+  font-family:'Syne',sans-serif;
+  font-size:32px;font-weight:800;letter-spacing:-1px;line-height:1;
+  color:var(--kpi-color,var(--cyan));
+  margin-bottom:4px;
+}
+.kpi-delta {font-size:11px;color:var(--dim)}
+.kpi-bar {
+  height:3px;background:var(--s3);border-radius:2px;margin-top:10px;overflow:hidden;
+}
+.kpi-fill {
+  height:100%;border-radius:2px;
+  background:var(--kpi-color,var(--cyan));
+  transition:width 1s ease;
+}
+
+/* ── Cards ── */
+.grid-2 {display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px}
+.grid-3 {display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px}
+.grid-eq {display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+@media(max-width:900px){.grid-2,.grid-3,.grid-eq{grid-template-columns:1fr}}
+
+.card {
+  background:var(--s1);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:20px;
+}
+.card-hd {
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:16px;
+}
+.card-title {
+  font-size:11px;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--dim);
+}
+.badge {
+  font-size:9px;letter-spacing:1px;text-transform:uppercase;
+  padding:3px 8px;border-radius:4px;
+}
+.badge-cyan{background:rgba(0,229,255,.12);color:var(--cyan)}
+.badge-green{background:rgba(0,255,136,.12);color:var(--green)}
+.badge-amber{background:rgba(255,184,0,.12);color:var(--amber)}
+.badge-red{background:rgba(255,69,96,.12);color:var(--red)}
+.badge-violet{background:rgba(139,92,246,.12);color:var(--violet)}
+
+canvas{max-height:260px}
+
+/* ── Table ── */
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{
+  font-size:9px;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--muted);text-align:left;
+  padding:8px 10px;border-bottom:1px solid var(--border);
+}
+td{
+  padding:9px 10px;border-bottom:1px solid rgba(30,45,69,.4);
+  color:var(--dim);
+}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(0,229,255,.025)}
+td.mono{font-family:'IBM Plex Mono',monospace}
+td.hi{color:var(--text)}
+
+/* ── Alert items ── */
+.alert-list{display:flex;flex-direction:column;gap:8px}
+.alert-item {
+  display:flex;align-items:flex-start;gap:12px;
+  padding:12px 14px;border-radius:8px;
+  background:var(--s2);border:1px solid var(--border);
+  transition:border-color .2s;
+}
+.alert-item:hover{border-color:var(--alert-color)}
+.alert-dot {
+  width:8px;height:8px;border-radius:50%;
+  background:var(--alert-color);margin-top:4px;flex-shrink:0;
+  box-shadow:0 0 6px var(--alert-color);
+}
+.alert-text{font-size:12px;color:var(--dim);line-height:1.5}
+.alert-sku{color:var(--text);font-weight:500}
+.alert-time{font-size:10px;color:var(--muted);margin-top:3px}
+
+/* ── Service status ── */
+.svc-grid {
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;
+}
+.svc {
+  background:var(--s2);border:1px solid var(--border);
+  border-radius:10px;padding:14px;
+  display:flex;flex-direction:column;gap:6px;
+}
+.svc-name{font-size:11px;color:var(--text)}
+.svc-dot {
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:10px;
+}
+.dot{width:6px;height:6px;border-radius:50%}
+.dot-green{background:var(--green);box-shadow:0 0 6px var(--green)}
+.dot-amber{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+.svc-latency{font-size:10px;color:var(--muted)}
+
+/* ── Log ── */
+.log {
+  background:var(--bg);border:1px solid var(--border);
+  border-radius:8px;padding:14px;
+  font-size:11px;color:var(--muted);
+  max-height:180px;overflow-y:auto;line-height:2;
+}
+.log span.ts{color:var(--violet)}
+.log span.ok{color:var(--green)}
+.log span.warn{color:var(--amber)}
+.log span.err{color:var(--red)}
+.log span.info{color:var(--cyan)}
+
+/* ── Feature bar ── */
+.feat-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.feat-name{font-size:11px;color:var(--dim);width:140px;flex-shrink:0}
+.feat-track{flex:1;height:6px;background:var(--s3);border-radius:3px;overflow:hidden}
+.feat-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--violet),var(--cyan));transition:width 1s ease}
+.feat-val{font-size:10px;color:var(--muted);width:36px;text-align:right}
+
+/* ── Refresh btn ── */
+.refresh-btn {
+  background:transparent;border:1px solid var(--border);
+  color:var(--dim);font-family:inherit;font-size:11px;
+  padding:6px 14px;border-radius:6px;cursor:pointer;
+  letter-spacing:1px;text-transform:uppercase;
+  transition:all .2s;
+}
+.refresh-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+
+/* ── Ticker ── */
+.ticker {
+  display:flex;gap:24px;overflow:hidden;
+  padding:8px 0;border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);
+  margin-bottom:20px;
+}
+.ticker-item {
+  white-space:nowrap;font-size:11px;color:var(--muted);
+  display:flex;gap:8px;align-items:center;flex-shrink:0;
+}
+.ticker-item strong{color:var(--text)}
+.ticker-item .up{color:var(--green)}
+.ticker-item .dn{color:var(--red)}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:var(--s1)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* ── Animations ── */
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.card,.kpi{animation:fadeUp .4s ease both}
+.kpi:nth-child(1){animation-delay:.05s}
+.kpi:nth-child(2){animation-delay:.1s}
+.kpi:nth-child(3){animation-delay:.15s}
+.kpi:nth-child(4){animation-delay:.2s}
+.kpi:nth-child(5){animation-delay:.25s}
+.kpi:nth-child(6){animation-delay:.3s}
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+<div class="wrap">
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <div class="logo-mark">📦</div>
+    <div>
+      <div class="logo-name">Smart<em>Replenish</em></div>
+      <div class="logo-sub">Demand Intelligence Platform · MVP v1.0</div>
+    </div>
+  </div>
+  <div class="status-row">
+    <span class="pill live" id="liveStatus">LIVE</span>
+    <span class="pill" id="clockPill">--:--:--</span>
+    <span class="pill badge-cyan">LightGBM + CatBoost</span>
+  </div>
+</header>
+
+<!-- Ticker -->
+<div class="ticker" id="ticker"></div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <button class="tab active" onclick="showPage('overview')">Обзор</button>
+  <button class="tab" onclick="showPage('forecast')">Прогноз</button>
+  <button class="tab" onclick="showPage('orders')">Заказы</button>
+  <button class="tab" onclick="showPage('alerts')">Алерты <span id="alertCount" style="color:var(--red)"></span></button>
+  <button class="tab" onclick="showPage('mlops')">ML Ops</button>
+  <button class="tab" onclick="showPage('infra')">Инфра</button>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     PAGE: OVERVIEW
+══════════════════════════════════════════════ -->
+<div class="page active" id="page-overview">
+
+  <div class="kpi-grid" id="kpiGrid"></div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-hd">
+        <span class="card-title">Продажи vs Прогноз — 60 дней</span>
+        <span class="badge badge-cyan">Ансамбль</span>
+      </div>
+      <canvas id="mainChart"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-hd">
+        <span class="card-title">Топ категории по обороту</span>
+        <span class="badge badge-violet">7 дней</span>
+      </div>
+      <canvas id="catChart"></canvas>
+    </div>
+  </div>
+
+  <div class="grid-3">
+    <div class="card">
+      <div class="card-hd"><span class="card-title">WAPE по магазинам</span></div>
+      <canvas id="wapeChart"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Распределение ошибки</span></div>
+      <canvas id="errChart"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Тренд точности (30 дн)</span></div>
+      <canvas id="trendChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     PAGE: FORECAST
+══════════════════════════════════════════════ -->
+<div class="page" id="page-forecast">
+  <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+    <select id="fSku" style="background:var(--s1);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-family:inherit;font-size:12px"></select>
+    <select id="fStore" style="background:var(--s1);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-family:inherit;font-size:12px"></select>
+    <select id="fPromo" style="background:var(--s1);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-family:inherit;font-size:12px">
+      <option value="0">Без промо</option>
+      <option value="0.3">Скидка 10%</option>
+      <option value="0.7">Скидка 20%</option>
+      <option value="1.2">Скидка 30%+</option>
+    </select>
+    <button class="refresh-btn" onclick="refreshForecast()">▶ Рассчитать</button>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-hd">
+        <span class="card-title">Прогноз на 14 дней с доверительным интервалом</span>
+        <span class="badge badge-green" id="fWape">WAPE —%</span>
+      </div>
+      <canvas id="fChart"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Feature Importance</span></div>
+      <div id="featImportance" style="padding-top:4px"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd">
+      <span class="card-title">Детализация прогноза</span>
+      <span class="badge badge-cyan">Direct strategy · 14 моделей</span>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Дата</th><th>День</th>
+        <th>Прогноз</th><th>Нижняя граница</th><th>Верхняя граница</th>
+        <th>Рек. заказ</th><th>Промо</th>
+      </tr></thead>
+      <tbody id="fTable"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     PAGE: ORDERS
+══════════════════════════════════════════════ -->
+<div class="page" id="page-orders">
+  <div class="grid-eq" style="margin-bottom:16px">
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Статусы заказов</span></div>
+      <canvas id="orderStatusChart" style="max-height:200px"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Страховой запас vs Прогноз</span></div>
+      <canvas id="safetyChart" style="max-height:200px"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-hd">
+      <span class="card-title">Рекомендации по заказу</span>
+      <button class="refresh-btn" onclick="refreshOrders()">↻ Обновить</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th>SKU</th><th>Магазин</th><th>Категория</th>
+        <th>Прогноз 7д</th><th>Страх. запас</th><th>Рек. заказ</th>
+        <th>Поставщик</th><th>Статус</th>
+      </tr></thead>
+      <tbody id="ordersTable"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     PAGE: ALERTS
+══════════════════════════════════════════════ -->
+<div class="page" id="page-alerts">
+  <div class="kpi-grid" id="alertKpis"></div>
+  <div class="grid-eq">
+    <div class="card">
+      <div class="card-hd">
+        <span class="card-title">Активные алерты</span>
+        <span class="badge badge-red" id="alertBadge">0</span>
+      </div>
+      <div class="alert-list" id="alertList"></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Динамика алертов (30 дн)</span></div>
+      <canvas id="alertChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     PAGE: ML OPS
+══════════════════════════════════════════════ -->
+<div class="page" id="page-mlops">
+  <div class="grid-3">
+    <div class="card">
+      <div class="card-hd"><span class="card-title">История обучений</span></div>
+      <canvas id="trainHistChart"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Data Drift monitor</span></div>
+      <canvas id="driftChart"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">A/B тест: LGB vs Ensemble</span></div>
+      <canvas id="abChart"></canvas>
+    </div>
+  </div>
+  <div class="grid-eq">
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Метрики моделей (backtesting)</span></div>
+      <table>
+        <thead><tr><th>Модель</th><th>WAPE</th><th>MAPE</th><th>SMAPE</th><th>Bias</th><th>MAE</th></tr></thead>
+        <tbody id="metricsTable"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">ML Pipeline Log</span></div>
+      <div class="log" id="mlLog"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     PAGE: INFRA
+══════════════════════════════════════════════ -->
+<div class="page" id="page-infra">
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-hd"><span class="card-title">Статус микросервисов</span></div>
+    <div class="svc-grid" id="svcGrid"></div>
+  </div>
+  <div class="grid-3">
+    <div class="card">
+      <div class="card-hd"><span class="card-title">API Latency p95 (мс)</span></div>
+      <canvas id="latencyChart"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Kafka Consumer Lag</span></div>
+      <canvas id="kafkaChart"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">RPS по сервисам</span></div>
+      <canvas id="rpsChart"></canvas>
+    </div>
+  </div>
+</div>
+
+</div><!-- /wrap -->
+
+<script>
+// ─── RNG ─────────────────────────────────────────────────────────────────────
+function rng(seed){
+  let s=seed;
+  return()=>{s=(s*1664525+1013904223)&0xffffffff;return(s>>>0)/0xffffffff};
+}
+function norm(r,mu=0,s=1){
+  let u=0,v=0;
+  while(!u)u=r();while(!v)v=r();
+  return mu+s*Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+
+const R = rng(2026);
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const SKUS = ['SKU-0041 Молоко 1л','SKU-0087 Хлеб белый','SKU-0123 Кефир 1%',
+              'SKU-0205 Йогурт','SKU-0318 Масло сл.','SKU-0442 Сметана',
+              'SKU-0513 Творог','SKU-0671 Сыр'];
+const STORES = ['STORE-001 Москва-С','STORE-002 Москва-Ю','STORE-003 СПб-Ц',
+                'STORE-004 Казань','STORE-005 Екб'];
+const CATS = ['Молочное','Хлеб','Мясо','Овощи','Напитки','Бакалея'];
+const SUPPLIERS = ['ООО МолПром','АО ХлебоПром','ЗАО МясоТрест','ИП Фермер'];
+const DAYS_RU = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+
+// Chart.js defaults
+Chart.defaults.color='#4a5568';
+Chart.defaults.borderColor='#1e2d45';
+Chart.defaults.font.family="'IBM Plex Mono',monospace";
+Chart.defaults.font.size=11;
+
+// ─── Clock ────────────────────────────────────────────────────────────────────
+setInterval(()=>{
+  const n=new Date();
+  document.getElementById('clockPill').textContent=
+    n.toLocaleTimeString('ru-RU');
+},1000);
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+function showPage(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ─── Ticker ───────────────────────────────────────────────────────────────────
+function buildTicker(){
+  const items=[
+    {label:'WAPE (7д)',val:'18.4%',dir:'up'},
+    {label:'OSA',val:'97.8%',dir:'up'},
+    {label:'Запасы',val:'−11.2%',dir:'up'},
+    {label:'Листинг',val:'42,180 SKU',dir:''},
+    {label:'Магазины',val:'127',dir:''},
+    {label:'Прогнозов/день',val:'5.4M',dir:''},
+    {label:'Заказов выгружено',val:'98.6%',dir:'up'},
+    {label:'P1 инцидентов',val:'0',dir:'up'},
+    {label:'Uptime',val:'99.91%',dir:'up'},
+  ];
+  const t=document.getElementById('ticker');
+  t.innerHTML=items.map(i=>`
+    <span class="ticker-item">
+      ${i.label}: <strong>${i.val}</strong>
+      ${i.dir==='up'?'<span class="up">▲</span>':i.dir==='dn'?'<span class="dn">▼</span>':''}
+    </span>`).join('');
+}
+buildTicker();
+
+// ─── KPIs ─────────────────────────────────────────────────────────────────────
+function buildKPIs(){
+  const kpis=[
+    {label:'WAPE (avg 7д)',val:'18.4%',delta:'vs 30% baseline',color:'var(--green)',fill:83},
+    {label:'Снижение запасов',val:'−11.2%',delta:'Цель: −8%',color:'var(--cyan)',fill:92},
+    {label:'OSA (доступность)',val:'97.8%',delta:'Цель: ≥97%',color:'var(--cyan)',fill:97},
+    {label:'Промо-остатки',val:'−52%',delta:'было 160M → стало 77M',color:'var(--green)',fill:87},
+    {label:'Bias',val:'+2.1%',delta:'Норма ±5%',color:'var(--amber)',fill:75},
+    {label:'Заказы в ERP',val:'98.6%',delta:'≥98% по ТЗ',color:'var(--green)',fill:98},
+  ];
+  const g=document.getElementById('kpiGrid');
+  g.innerHTML=kpis.map(k=>`
+    <div class="kpi" style="--kpi-color:${k.color}">
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-val">${k.val}</div>
+      <div class="kpi-delta">${k.delta}</div>
+      <div class="kpi-bar"><div class="kpi-fill" style="width:${k.fill}%"></div></div>
+    </div>`).join('');
+}
+buildKPIs();
+
+// ─── Charts registry ──────────────────────────────────────────────────────────
+const charts={};
+function mkChart(id,cfg){
+  if(charts[id])charts[id].destroy();
+  charts[id]=new Chart(document.getElementById(id),cfg);
+  return charts[id];
+}
+
+function chartOpts(extra={}){
+  return {
+    responsive:true,
+    maintainAspectRatio:true,
+    plugins:{legend:{display:false},tooltip:{
+      backgroundColor:'#0d1117',borderColor:'#1e2d45',borderWidth:1,
+      titleColor:'#4a5568',bodyColor:'#e8edf5',
+      titleFont:{family:"'IBM Plex Mono',monospace",size:10}
+    }},
+    scales:{
+      x:{ticks:{color:'#2d3a4a',maxTicksLimit:10},grid:{color:'rgba(30,45,69,.5)'}},
+      y:{ticks:{color:'#2d3a4a'},grid:{color:'rgba(30,45,69,.5)'}},
+    },
+    ...extra
+  };
+}
+
+// ─── OVERVIEW: Main chart ─────────────────────────────────────────────────────
+function buildMainChart(){
+  const r2=rng(42);
+  const labels=[],hist=[],forecast=[],fact=[];
+  const now=new Date();
+  for(let i=0;i<60;i++){
+    const d=new Date(now);d.setDate(d.getDate()-60+i);
+    labels.push(d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}));
+    const dow=d.getDay();
+    const wk=(dow===0||dow===6)?1.3:1;
+    const base=120+norm(r2,0,10);
+    hist.push(Math.max(0,Math.round(base*wk)));
+    forecast.push(i>=52?Math.max(0,Math.round(base*wk+norm(r2,0,5))):null);
+    fact.push(i>=52?Math.max(0,Math.round(base*wk+norm(r2,0,8))):null);
+  }
+  mkChart('mainChart',{type:'line',data:{labels,datasets:[
+    {label:'История',data:hist,borderColor:'#2d3a4a',borderWidth:1.5,pointRadius:0,tension:.3,fill:true,backgroundColor:'rgba(45,58,74,.1)'},
+    {label:'Прогноз',data:forecast,borderColor:'#00e5ff',borderWidth:2.5,pointRadius:3,pointBackgroundColor:'#00e5ff',tension:.3,fill:true,backgroundColor:'rgba(0,229,255,.08)',borderDash:[]},
+    {label:'Факт',data:fact,borderColor:'#00ff88',borderWidth:2,pointRadius:3,pointBackgroundColor:'#00ff88',tension:.3},
+  ]},options:chartOpts()});
+}
+
+function buildCatChart(){
+  const cats=['Молочное','Хлеб','Мясо','Овощи','Напитки','Бакалея'];
+  const vals=[38,22,18,12,6,4];
+  mkChart('catChart',{type:'doughnut',data:{labels:cats,datasets:[{
+    data:vals,
+    backgroundColor:['#00e5ff','#8b5cf6','#00ff88','#ffb800','#ff4560','#38bdf8'],
+    borderWidth:0,hoverOffset:6,
+  }]},options:{
+    responsive:true,plugins:{legend:{display:true,position:'right',
+      labels:{color:'#4a5568',font:{size:11},padding:10}
+    },tooltip:{backgroundColor:'#0d1117',borderColor:'#1e2d45',borderWidth:1}},
+  }});
+}
+
+function buildWapeChart(){
+  const r3=rng(77);
+  const stores=['S-001','S-002','S-003','S-004','S-005'];
+  const vals=stores.map(()=>Math.round(14+r3()*10));
+  mkChart('wapeChart',{type:'bar',data:{labels:stores,datasets:[{
+    data:vals,
+    backgroundColor:vals.map(v=>v<22?'rgba(0,255,136,.7)':'rgba(255,69,96,.7)'),
+    borderRadius:4,
+  }]},options:{...chartOpts(),plugins:{
+    legend:{display:false},
+    annotation:{annotations:{line1:{type:'line',yMin:22,yMax:22,borderColor:'rgba(255,184,0,.6)',borderWidth:1,borderDash:[4,4]}}},
+  }}});
+}
+
+function buildErrChart(){
+  const r4=rng(99);
+  const buckets=Array(12).fill(0);
+  for(let i=0;i<200;i++){
+    const err=norm(r4,2,8);
+    const idx=Math.max(0,Math.min(11,Math.floor((err+25)/50*12)));
+    buckets[idx]++;
+  }
+  const labels=buckets.map((_,i)=>Math.round(-25+i*50/12));
+  mkChart('errChart',{type:'bar',data:{labels,datasets:[{
+    data:buckets,backgroundColor:'rgba(139,92,246,.65)',borderRadius:3,
+  }]},options:chartOpts()});
+}
+
+function buildTrendChart(){
+  const r5=rng(13);
+  const labels=[],vals=[];
+  const now=new Date();
+  for(let i=29;i>=0;i--){
+    const d=new Date(now);d.setDate(d.getDate()-i);
+    labels.push(d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}));
+    vals.push(Math.round(22-i*0.12+norm(r5,0,1.5)));
+  }
+  mkChart('trendChart',{type:'line',data:{labels,datasets:[{
+    data:vals,borderColor:'#00e5ff',borderWidth:2,
+    pointRadius:0,tension:.4,fill:true,
+    backgroundColor:'rgba(0,229,255,.06)',
+  }]},options:chartOpts()});
+}
+
+buildMainChart();buildCatChart();buildWapeChart();buildErrChart();buildTrendChart();
+
+// ─── FORECAST PAGE ────────────────────────────────────────────────────────────
+(function initForecastPage(){
+  const skuSel=document.getElementById('fSku');
+  const storeSel=document.getElementById('fStore');
+  SKUS.forEach(s=>{const o=document.createElement('option');o.textContent=s;skuSel.appendChild(o)});
+  STORES.forEach(s=>{const o=document.createElement('option');o.textContent=s;storeSel.appendChild(o)});
+})();
+
+function refreshForecast(){
+  const promo=parseFloat(document.getElementById('fPromo').value)||0;
+  const r=rng(Math.floor(Math.random()*1000));
+  const labels=[],pred=[],lo=[],hi=[],fact=[];
+  const now=new Date();
+  // 30 days history + 14 forecast
+  for(let i=0;i<44;i++){
+    const d=new Date(now);d.setDate(d.getDate()-30+i);
+    labels.push(d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}));
+    const dow=d.getDay();
+    const wk=(dow===0||dow===6)?1.28:1;
+    const prEffect=i>=30?1+promo*1.5:1;
+    const base=100+norm(r,0,8);
+    const v=Math.max(0,Math.round(base*wk*prEffect));
+    if(i<30){pred.push(null);lo.push(null);hi.push(null);fact.push(v)}
+    else{
+      const p=Math.max(0,Math.round(base*wk*prEffect+norm(r,0,4)));
+      const s=Math.abs(norm(r,0,6));
+      pred.push(p);lo.push(Math.max(0,Math.round(p-1.96*s)));hi.push(Math.round(p+1.96*s));
+      fact.push(null);
+    }
+  }
+  // WAPE
+  const predVals=pred.filter(v=>v!==null);
+  const wape=(Math.random()*8+14).toFixed(1);
+  document.getElementById('fWape').textContent=`WAPE ${wape}%`;
+
+  mkChart('fChart',{type:'line',data:{labels,datasets:[
+    {label:'История',data:fact,borderColor:'#2d3a4a',borderWidth:1.5,pointRadius:0,tension:.3},
+    {label:'Прогноз',data:pred,borderColor:'#00e5ff',borderWidth:2.5,pointRadius:3,pointBackgroundColor:'#00e5ff',tension:.3},
+    {label:'Верхняя',data:hi,borderColor:'rgba(0,229,255,.2)',borderWidth:1,pointRadius:0,tension:.3,fill:'+1',backgroundColor:'rgba(0,229,255,.06)'},
+    {label:'Нижняя',data:lo,borderColor:'rgba(0,229,255,.2)',borderWidth:1,pointRadius:0,tension:.3},
+  ]},options:chartOpts()});
+
+  // Feature importance
+  const feats=[
+    {n:'lag_7',v:0.24},{n:'rolling_mean_7',v:0.19},{n:'lag_1',v:0.14},
+    {n:'day_of_week',v:0.12},{n:'rolling_mean_14',v:0.09},{n:'promo_flag',v:0.08+promo*0.05},
+    {n:'ewm_7',v:0.07},{n:'seasonality',v:0.05},{n:'price_change',v:0.02},
+  ];
+  const max=Math.max(...feats.map(f=>f.v));
+  document.getElementById('featImportance').innerHTML=
+    feats.map(f=>`<div class="feat-row">
+      <span class="feat-name">${f.n}</span>
+      <div class="feat-track"><div class="feat-fill" style="width:${f.v/max*100}%"></div></div>
+      <span class="feat-val">${(f.v*100).toFixed(0)}%</span>
+    </div>`).join('');
+
+  // Table
+  const tbody=document.getElementById('fTable');
+  tbody.innerHTML='';
+  for(let i=0;i<14;i++){
+    const d=new Date(now);d.setDate(d.getDate()+i+1);
+    const p=pred[30+i];const l=lo[30+i];const h=hi[30+i];
+    const order=Math.round(p*1.13);
+    const isPromoDay=(promo>0&&i<5)?'<span class="badge badge-amber">Промо</span>':'—';
+    tbody.innerHTML+=`<tr>
+      <td class="hi">${d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}</td>
+      <td>${DAYS_RU[d.getDay()]}</td>
+      <td style="color:var(--cyan);font-weight:600">${p}</td>
+      <td style="color:var(--muted)">${l}</td>
+      <td style="color:var(--muted)">${h}</td>
+      <td style="color:var(--amber)">${order}</td>
+      <td>${isPromoDay}</td>
+    </tr>`;
+  }
+}
+refreshForecast();
+
+// ─── ORDERS PAGE ──────────────────────────────────────────────────────────────
+function buildOrderStatusChart(){
+  mkChart('orderStatusChart',{type:'doughnut',data:{
+    labels:['Рекомендован','Подтверждён','Выгружен в ERP','Отменён'],
+    datasets:[{data:[34,28,127,5],
+      backgroundColor:['rgba(0,229,255,.7)','rgba(0,255,136,.7)','rgba(139,92,246,.7)','rgba(255,69,96,.5)'],
+      borderWidth:0}]
+  },options:{responsive:true,plugins:{legend:{display:true,position:'right',
+    labels:{color:'#4a5568',font:{size:10},padding:8}}}}});
+}
+
+function buildSafetyChart(){
+  const r6=rng(55);
+  const skus=SKUS.slice(0,5).map(s=>s.split(' ')[0]);
+  mkChart('safetyChart',{type:'bar',data:{labels:skus,datasets:[
+    {label:'Прогноз',data:skus.map(()=>Math.round(80+r6()*60)),backgroundColor:'rgba(0,229,255,.6)',borderRadius:3},
+    {label:'Страх. запас',data:skus.map(()=>Math.round(15+r6()*20)),backgroundColor:'rgba(255,184,0,.6)',borderRadius:3},
+  ]},options:{...chartOpts(),plugins:{legend:{display:true,labels:{color:'#4a5568',font:{size:10}}}}}});
+}
+
+function refreshOrders(){
+  const r7=rng(Date.now()%9999);
+  const tbody=document.getElementById('ordersTable');
+  tbody.innerHTML='';
+  const statuses=[
+    {label:'Рекомендован',cls:'badge-cyan'},
+    {label:'Подтверждён',cls:'badge-green'},
+    {label:'Выгружен',cls:'badge-violet'},
+  ];
+  for(let i=0;i<12;i++){
+    const sku=SKUS[Math.floor(r7()*SKUS.length)];
+    const store=STORES[Math.floor(r7()*STORES.length)];
+    const cat=CATS[Math.floor(r7()*CATS.length)];
+    const sup=SUPPLIERS[Math.floor(r7()*SUPPLIERS.length)];
+    const forecast7=Math.round(60+r7()*120);
+    const safety=Math.round(10+r7()*25);
+    const order=forecast7+safety;
+    const st=statuses[Math.floor(r7()*statuses.length)];
+    tbody.innerHTML+=`<tr>
+      <td class="hi mono">${sku.split(' ')[0]}</td>
+      <td>${store.split(' ')[0]}</td>
+      <td><span class="badge badge-violet">${cat}</span></td>
+      <td style="color:var(--cyan)">${forecast7}</td>
+      <td style="color:var(--amber)">${safety}</td>
+      <td style="color:var(--text);font-weight:600">${order}</td>
+      <td style="color:var(--muted);font-size:10px">${sup}</td>
+      <td><span class="badge ${st.cls}">${st.label}</span></td>
+    </tr>`;
+  }
+}
+
+buildOrderStatusChart();buildSafetyChart();refreshOrders();
+
+// ─── ALERTS PAGE ──────────────────────────────────────────────────────────────
+function buildAlerts(){
+  const alertKpis=[
+    {label:'Out-of-stock риск',val:'14',color:'var(--red)',fill:60},
+    {label:'Overstock риск',val:'8',color:'var(--amber)',fill:35},
+    {label:'Срок годности <3дн',val:'3',color:'var(--amber)',fill:20},
+    {label:'Критических (P1)',val:'0',color:'var(--green)',fill:100},
+  ];
+  document.getElementById('alertKpis').innerHTML=alertKpis.map(k=>`
+    <div class="kpi" style="--kpi-color:${k.color}">
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-val">${k.val}</div>
+      <div class="kpi-bar"><div class="kpi-fill" style="width:${k.fill}%"></div></div>
+    </div>`).join('');
+
+  const alerts=[
+    {sev:'red',sku:'SKU-0041',store:'STORE-002',msg:'Out-of-stock риск через 2 дня. Остаток: 12 ед. Прогноз: 45 ед.',time:'2 мин назад'},
+    {sev:'red',sku:'SKU-0087',store:'STORE-004',msg:'Критически низкий остаток. Заказ не подтверждён поставщиком.',time:'7 мин назад'},
+    {sev:'amber',sku:'SKU-0513',store:'STORE-001',msg:'Overstock +180%. Рекомендуется уценка или перераспределение.',time:'18 мин назад'},
+    {sev:'amber',sku:'SKU-0318',store:'STORE-003',msg:'Срок годности истекает через 3 дня. 240 ед. под угрозой списания.',time:'35 мин назад'},
+    {sev:'amber',sku:'SKU-0205',store:'STORE-005',msg:'WAPE деградировал до 28.4% — выше порога 22%.',time:'1ч назад'},
+    {sev:'cyan',sku:'SKU-0671',store:'STORE-001',msg:'Промо-акция завтра. Автозаказ сформирован: +340 ед.',time:'2ч назад'},
+  ];
+  const colors={red:'var(--red)',amber:'var(--amber)',cyan:'var(--cyan)'};
+  document.getElementById('alertList').innerHTML=alerts.map(a=>`
+    <div class="alert-item" style="--alert-color:${colors[a.sev]}">
+      <div class="alert-dot" style="background:${colors[a.sev]};box-shadow:0 0 6px ${colors[a.sev]}"></div>
+      <div>
+        <div class="alert-text"><span class="alert-sku">${a.sku} · ${a.store}</span> — ${a.msg}</div>
+        <div class="alert-time">${a.time}</div>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('alertBadge').textContent=alerts.filter(a=>a.sev==='red').length;
+  document.getElementById('alertCount').textContent=` (${alerts.filter(a=>a.sev==='red').length})`;
+
+  // Alert trend chart
+  const r8=rng(88);
+  const now=new Date();
+  const al=[],ao=[];
+  const alLabels=[];
+  for(let i=29;i>=0;i--){
+    const d=new Date(now);d.setDate(d.getDate()-i);
+    alLabels.push(d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}));
+    al.push(Math.round(2+r8()*8));
+    ao.push(Math.round(1+r8()*5));
+  }
+  mkChart('alertChart',{type:'bar',data:{labels:alLabels,datasets:[
+    {label:'Out-of-stock',data:al,backgroundColor:'rgba(255,69,96,.6)',borderRadius:2},
+    {label:'Overstock',data:ao,backgroundColor:'rgba(255,184,0,.5)',borderRadius:2},
+  ]},options:{...chartOpts(),plugins:{legend:{display:true,labels:{color:'#4a5568',font:{size:10}}}}}});
+}
+buildAlerts();
+
+// ─── ML OPS PAGE ──────────────────────────────────────────────────────────────
+function buildMLOps(){
+  // Training history
+  const r9=rng(33);
+  const trainLabels=[],wapeVals=[];
+  for(let i=7;i>=0;i--){
+    const d=new Date();d.setDate(d.getDate()-i*7);
+    trainLabels.push(d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}));
+    wapeVals.push((16+r9()*6).toFixed(1));
+  }
+  mkChart('trainHistChart',{type:'line',data:{labels:trainLabels,datasets:[{
+    label:'WAPE',data:wapeVals,borderColor:'#8b5cf6',borderWidth:2,
+    pointRadius:5,pointBackgroundColor:'#8b5cf6',tension:.3,
+    fill:true,backgroundColor:'rgba(139,92,246,.08)',
+  }]},options:chartOpts()});
+
+  // Data drift
+  const r10=rng(44);
+  const driftLabels=[];const driftVals=[];
+  for(let i=13;i>=0;i--){
+    const d=new Date();d.setDate(d.getDate()-i);
+    driftLabels.push(d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}));
+    driftVals.push((0.02+r10()*0.08).toFixed(3));
+  }
+  mkChart('driftChart',{type:'line',data:{labels:driftLabels,datasets:[{
+    label:'PSI',data:driftVals,borderColor:'#ffb800',borderWidth:2,
+    pointRadius:3,pointBackgroundColor:'#ffb800',tension:.3,
+    fill:true,backgroundColor:'rgba(255,184,0,.05)',
+  }]},options:chartOpts()});
+
+  // A/B test
+  mkChart('abChart',{type:'bar',data:{
+    labels:['WAPE','MAPE','MAE'],
+    datasets:[
+      {label:'LightGBM only',data:[21.2,24.8,8.4],backgroundColor:'rgba(0,229,255,.6)',borderRadius:3},
+      {label:'Ансамбль LGB+CB',data:[18.4,21.3,7.1],backgroundColor:'rgba(0,255,136,.6)',borderRadius:3},
+    ]
+  },options:{...chartOpts(),plugins:{legend:{display:true,labels:{color:'#4a5568',font:{size:10}}}}}});
+
+  // Metrics table
+  const models=[
+    {name:'LightGBM (step 1)',wape:16.2,mape:19.1,smape:18.4,bias:1.2,mae:6.8},
+    {name:'CatBoost (step 1)', wape:17.8,mape:20.5,smape:19.7,bias:-0.8,mae:7.4},
+    {name:'Ensemble (step 1)', wape:15.1,mape:17.9,smape:17.2,bias:0.9,mae:6.2},
+    {name:'Ensemble (step 7)', wape:18.4,mape:21.3,smape:20.8,bias:2.1,mae:7.8},
+    {name:'Ensemble (step 14)',wape:23.1,mape:26.8,smape:25.4,bias:3.4,mae:9.2},
+  ];
+  document.getElementById('metricsTable').innerHTML=models.map(m=>`<tr>
+    <td class="hi">${m.name}</td>
+    <td style="color:${m.wape<22?'var(--green)':'var(--red)'}">${m.wape}%</td>
+    <td>${m.mape}%</td><td>${m.smape}%</td>
+    <td style="color:${Math.abs(m.bias)<5?'var(--green)':'var(--amber)'}">${m.bias>0?'+':''}${m.bias}%</td>
+    <td>${m.mae}</td>
+  </tr>`).join('');
+
+  // ML log
+  const logLines=[
+    {ts:'10:02:14',cls:'info',msg:'Weekly retrain triggered'},
+    {ts:'10:02:15',cls:'info',msg:'Loading features from ClickHouse (42,180 SKU)'},
+    {ts:'10:04:22',cls:'ok',msg:'Feature engineering complete (38 features)'},
+    {ts:'10:04:23',cls:'info',msg:'Training LightGBM step 1/7 (train=892k, val=127k)'},
+    {ts:'10:06:11',cls:'ok',msg:'LightGBM step 1 done. Val WAPE=16.2%'},
+    {ts:'10:08:45',cls:'ok',msg:'CatBoost step 1 done. Val WAPE=17.8%'},
+    {ts:'10:24:30',cls:'ok',msg:'All 14 model-pairs trained'},
+    {ts:'10:24:31',cls:'info',msg:'Running backtesting (6 months)'},
+    {ts:'10:26:05',cls:'ok',msg:'Backtesting complete. Avg WAPE=18.4% ✓ (< 22% threshold)'},
+    {ts:'10:26:06',cls:'info',msg:'Saving ensemble → /app/models/latest_model.pkl'},
+    {ts:'10:26:08',cls:'ok',msg:'Model deployed to production'},
+    {ts:'10:26:09',cls:'ok',msg:'Forecasts exported to ERP (98.6% success rate)'},
+  ];
+  document.getElementById('mlLog').innerHTML=logLines.map(l=>
+    `<span class="ts">[${l.ts}]</span> <span class="${l.cls}">${l.msg}</span><br>`
+  ).join('');
+}
+buildMLOps();
+
+// ─── INFRA PAGE ───────────────────────────────────────────────────────────────
+function buildInfra(){
+  const svcs=[
+    {name:'api-gateway',port:8080,lat:12,status:'up'},
+    {name:'forecasting',port:8002,lat:340,status:'up'},
+    {name:'optimization',port:8003,lat:45,status:'up'},
+    {name:'alerting',port:8004,lat:28,status:'up'},
+    {name:'feature-store',port:8001,lat:67,status:'up'},
+    {name:'data-ingestion',port:null,lat:null,status:'up'},
+    {name:'clickhouse',port:8123,lat:8,status:'up'},
+    {name:'kafka',port:9092,lat:null,status:'up'},
+    {name:'postgres',port:5432,lat:null,status:'up'},
+    {name:'prometheus',port:9090,lat:null,status:'up'},
+    {name:'grafana',port:3030,lat:null,status:'up'},
+    {name:'frontend',port:3000,lat:null,status:'up'},
+  ];
+  document.getElementById('svcGrid').innerHTML=svcs.map(s=>`
+    <div class="svc">
+      <div class="svc-name">${s.name}</div>
+      <div class="svc-dot">
+        <div class="dot dot-green"></div>
+        <span style="color:var(--green)">HEALTHY</span>
+      </div>
+      ${s.port?`<div class="svc-latency">:${s.port}${s.lat?' · '+s.lat+'ms':''}</div>`:''}
+    </div>`).join('');
+
+  // Latency chart
+  const r11=rng(66);
+  const lLabels=[];const lData=[];
+  for(let i=19;i>=0;i--){
+    const d=new Date();d.setMinutes(d.getMinutes()-i*3);
+    lLabels.push(d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}));
+    lData.push(Math.round(280+norm(r11,0,40)));
+  }
+  mkChart('latencyChart',{type:'line',data:{labels:lLabels,datasets:[{
+    data:lData,borderColor:'#00e5ff',borderWidth:2,pointRadius:0,tension:.4,
+    fill:true,backgroundColor:'rgba(0,229,255,.06)',
+  }]},options:{...chartOpts(),plugins:{...chartOpts().plugins,
+    annotation:{annotations:{thr:{type:'line',yMin:500,yMax:500,
+      borderColor:'rgba(255,69,96,.5)',borderWidth:1,borderDash:[4,4]}}}
+  }}});
+
+  // Kafka lag
+  const r12=rng(77);
+  const kData=[];const kLabels=[];
+  for(let i=19;i>=0;i--){
+    const d=new Date();d.setMinutes(d.getMinutes()-i*3);
+    kLabels.push(d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}));
+    kData.push(Math.round(200+norm(r12,0,800)));
+  }
+  mkChart('kafkaChart',{type:'bar',data:{labels:kLabels,datasets:[{
+    data:kData,backgroundColor:'rgba(139,92,246,.6)',borderRadius:2,
+  }]},options:chartOpts()});
+
+  // RPS
+  const svcsRPS=['forecasting','optimization','alerting','gateway'];
+  mkChart('rpsChart',{type:'bar',data:{
+    labels:svcsRPS,
+    datasets:[{
+      data:[42,8,3,67],
+      backgroundColor:['rgba(0,229,255,.7)','rgba(0,255,136,.7)','rgba(255,184,0,.7)','rgba(139,92,246,.7)'],
+      borderRadius:4,
+    }]
+  },options:chartOpts()});
+}
+buildInfra();
+
+// ─── Auto-refresh simulation ──────────────────────────────────────────────────
+setInterval(()=>{
+  // Subtle ticker update
+  const liveEl=document.getElementById('liveStatus');
+  liveEl.style.opacity=liveEl.style.opacity==='0.4'?'1':'0.4';
+},1500);
+
+console.log('%c SmartReplenish Demo v1.0 ', 'background:#00e5ff;color:#060810;font-weight:bold;padding:4px 8px;border-radius:4px');
+console.log('%c LightGBM + CatBoost Ensemble | Direct Strategy | 38 Features', 'color:#8b5cf6');
+</script>
+</body>
+</html>

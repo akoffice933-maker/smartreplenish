@@ -1,0 +1,48 @@
+# Конфигурация источников данных
+sources:
+  - name: sales
+    type: postgres
+    connection:
+      host: postgres
+      port: 5432
+      database: smartreplenish
+      user: admin
+      password: admin123
+    table: sales
+    schedule: "*/5 * * * *"  # каждые 5 минут
+
+  - name: inventory
+    type: postgres
+    connection:
+      host: postgres
+      port: 5432
+      database: smartreplenish
+      user: admin
+      password: admin123
+    table: inventory
+    schedule: "*/10 * * * *"  # каждые 10 минут
+
+  - name: products
+    type: postgres
+    connection:
+      host: postgres
+      port: 5432
+      database: smartreplenish
+      user: admin
+      password: admin123
+    table: products
+    schedule: "0 0 * * *"  # ежедневно
+
+kafka:
+  bootstrap_servers: kafka:9092
+  topics:
+    sales: sales_raw
+    inventory: inventory_raw
+    products: products_raw
+
+clickhouse:
+  host: clickhouse
+  port: 9000
+  database: smartreplenish
+  user: default
+  password: ""
