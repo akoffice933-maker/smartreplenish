@@ -7,6 +7,8 @@
 [![Docker](https://img.shields.io/badge/docker-24.0+-blue.svg)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/akoffice933-maker/smartreplenish)
+[![CI/CD](https://github.com/akoffice933-maker/smartreplenish/actions/workflows/ci.yml/badge.svg)](https://github.com/akoffice933-maker/smartreplenish/actions)
+[![Issues](https://img.shields.io/github/issues/akoffice933-maker/smartreplenish)](https://github.com/akoffice933-maker/smartreplenish/issues)
 
 ---
 
