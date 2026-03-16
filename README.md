@@ -6,7 +6,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
 [![Docker](https://img.shields.io/badge/docker-24.0+-blue.svg)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/your-org/smartreplenish)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/akoffice933-maker/smartreplenish)
 
 ---
 
@@ -205,7 +205,7 @@ order = response.json()
 
 ```bash
 # 1. Клонирование репозитория
-git clone https://github.com/your-org/smartreplenish.git
+git clone https://github.com/akoffice933-maker/smartreplenish.git
 cd smartreplenish
 
 # 2. Настройка окружения

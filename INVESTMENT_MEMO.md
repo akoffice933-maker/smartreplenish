@@ -306,7 +306,8 @@
 
 - **Email**: investors@smartreplenish.com
 - **Телефон**: +7 (495) XXX-XX-XX
-- **Сайт**: https://smartreplenish.com/investors
+- **Сайт**: https://akoffice933-maker.github.io/smartreplenish
+- **GitHub**: https://github.com/akoffice933-maker/smartreplenish
 
 **Данные для due diligence:**
 
